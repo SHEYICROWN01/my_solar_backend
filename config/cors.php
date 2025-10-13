@@ -17,17 +17,17 @@ return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_origins' => [
-        // Allow your local frontend running on port 3000 (common for React/Next/Vite)
-        'http://localhost:8080',
-        'http://127.0.0.1:8080',
-        // You can use '*' during fast local development, but it's less secure.
-        // If you are absolutely sure of your frontend port, use the specific one.
-    ],
-
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'http://localhost:8080',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:8080',
+        'http://localhost:3001',
+        'http://localhost:5173', // Vite default
+        'http://localhost:5174', // Vite alternative
+    ],
 
     'allowed_origins_patterns' => [],
 
@@ -37,6 +37,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];

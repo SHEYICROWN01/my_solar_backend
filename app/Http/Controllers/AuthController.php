@@ -5,44 +5,146 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\EmailValidationService;
+use App\Services\AdminNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Auth\Events\Registered; // <-- Import the Registered event
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Auth\Access\AuthorizationException;
 
 class AuthController extends Controller
 {
+    protected $emailValidator;
+    protected $notificationService;
+
+    public function __construct(EmailValidationService $emailValidator, AdminNotificationService $notificationService)
+    {
+        $this->emailValidator = $emailValidator;
+        $this->notificationService = $notificationService;
+    }
+
     public function register(Request $request)
     {
-        // 1. Validation
+        // 1. Basic Validation
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // 2. Create User
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            // 'role' defaults to 0 (User) in the database migration, no need to pass it here.
-        ]);
+        // 2. Advanced Email Validation - Check if email actually exists
+        $emailValidation = $this->emailValidator->validateEmailExists($request->email);
+        
+        if (!$emailValidation['valid']) {
+            \Log::warning('Registration blocked - Invalid email detected', [
+                'email' => $request->email,
+                'validation_code' => $emailValidation['code'],
+                'validation_message' => $emailValidation['message'],
+                'user_ip' => $request->ip(),
+                'user_agent' => $request->userAgent()
+            ]);
 
-        // 3. Trigger Email Verification Event
-        // This event sends the verification link (built-in Laravel feature).
-        event(new Registered($user));
+            return response()->json([
+                'message' => $emailValidation['message'],
+                'error' => 'email_validation_failed',
+                'details' => 'Please ensure you enter a valid, existing email address that can receive emails.'
+            ], 422);
+        }
 
-        // 4. Generate Token (Optional but good practice for API)
-        // We're returning a simple message now, but for a production API,
-        // you often log them in immediately and send a token.
-        // For now, let's keep it clean for verification.
+        // 3. Check for disposable/temporary email domains
+        $domainValidation = $this->emailValidator->validateEmailDomain($request->email);
+        
+        if (!$domainValidation['valid']) {
+            \Log::warning('Registration blocked - Disposable email detected', [
+                'email' => $request->email,
+                'validation_code' => $domainValidation['code'],
+                'validation_message' => $domainValidation['message'],
+                'user_ip' => $request->ip(),
+                'user_agent' => $request->userAgent()
+            ]);
 
-        return response()->json([
-            'message' => 'User registered successfully. Please check your email for the verification link.',
-            'user' => $user->only(['name', 'email', 'role']),
-        ], 201);
+            return response()->json([
+                'message' => $domainValidation['message'],
+                'error' => 'disposable_email_not_allowed',
+                'details' => 'Please use a permanent email address for registration.'
+            ], 422);
+        }
+
+        try {
+            // Start database transaction
+            DB::beginTransaction();
+
+            // 4. Create User (only after email validation passes)
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+            ]);
+
+            // Commit the user creation first - this ensures the user is saved even if email fails
+            DB::commit();
+
+            // 5. Create admin notification for new user registration
+            $this->notificationService->notifyUserRegistration($user);
+
+            // 6. Try to send verification email in a separate try-catch
+            // This way, if email fails, the user is still created successfully
+            try {
+                event(new Registered($user));
+                
+                \Log::info('User registered successfully with email sent', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'email_validation_code' => $emailValidation['code'],
+                    'user_ip' => $request->ip(),
+                    'email_sent' => true
+                ]);
+
+                return response()->json([
+                    'message' => 'User registered successfully. Please check your email for the verification link.',
+                    'user' => $user->only(['name', 'email', 'role']),
+                    'email_sent' => true
+                ], 201);
+
+            } catch (\Exception $emailError) {
+                // Log email failure but don't fail the registration
+                \Log::warning('User registered but email verification failed to send', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'email_error' => $emailError->getMessage(),
+                    'user_ip' => $request->ip(),
+                    'email_sent' => false
+                ]);
+
+                return response()->json([
+                    'message' => 'Registration successful! However, we couldn\'t send the verification email right now. You can request a new verification email later.',
+                    'user' => $user->only(['name', 'email', 'role']),
+                    'email_sent' => false,
+                    'note' => 'Please try logging in. If you need email verification, contact support.'
+                ], 201);
+            }
+
+        } catch (\Exception $e) {
+            // If user creation fails, rollback the transaction
+            DB::rollBack();
+            
+            \Log::error('User registration failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'email' => $request->email,
+                'name' => $request->name,
+                'user_ip' => $request->ip()
+            ]);
+
+            return response()->json([
+                'message' => 'Registration failed. Please try again.',
+                'error' => 'registration_failed'
+            ], 500);
+        }
     }
 
     public function verify(Request $request, $id, $hash)
@@ -63,6 +165,9 @@ class AuthController extends Controller
 
         $user->markEmailAsVerified();
         event(new Verified($user));
+
+        // Create admin notification for email verification
+        $this->notificationService->notifyUserEmailVerified($user);
 
         return view('email-verified', ['message' => 'Email verified successfully.']);
     }
@@ -101,6 +206,44 @@ class AuthController extends Controller
             'user' => $user->only(['name', 'email', 'role']),
             'token' => $token,
         ], 200);
+    }
+
+    /**
+     * Validate email address in real-time (for frontend use)
+     */
+    public function validateEmail(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email'
+        ]);
+
+        $emailValidation = $this->emailValidator->validateEmailExists($request->email);
+        $domainValidation = $this->emailValidator->validateEmailDomain($request->email);
+
+        // Check if email is already registered
+        $emailExists = User::where('email', $request->email)->exists();
+        if ($emailExists) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'This email address is already registered',
+                'code' => 'EMAIL_ALREADY_EXISTS'
+            ]);
+        }
+
+        // Return combined validation result
+        if (!$emailValidation['valid']) {
+            return response()->json($emailValidation);
+        }
+
+        if (!$domainValidation['valid']) {
+            return response()->json($domainValidation);
+        }
+
+        return response()->json([
+            'valid' => true,
+            'message' => 'Email address is valid and available for registration',
+            'code' => 'EMAIL_AVAILABLE'
+        ]);
     }
 
     // You will add logout methods here later...

@@ -56,6 +56,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend Application URL
+    |--------------------------------------------------------------------------
+    |
+    | This URL is used for generating frontend deep links in emails and
+    | notifications. Set this to your frontend application's base URL.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Currency
+    |--------------------------------------------------------------------------
+    |
+    | The default currency for payments and transactions in the application.
+    |
+    */
+
+    'default_currency' => env('DEFAULT_CURRENCY', 'NGN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
