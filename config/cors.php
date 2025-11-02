@@ -20,6 +20,7 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
+        // Local development
         'http://localhost:3000',
         'http://localhost:8080',
         'http://127.0.0.1:3000',
@@ -27,9 +28,20 @@ return [
         'http://localhost:3001',
         'http://localhost:5173', // Vite default
         'http://localhost:5174', // Vite alternative
+        
+        // Production domains
+        'https://ggtl.com',
+        'https://www.ggtl.com',
+        'https://api.ggtl.com',
+        
+        // Vercel deployment domains (add your actual Vercel URL)
+        'https://your-frontend-app.vercel.app',
     ],
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        // Allow all Vercel preview deployments
+        '/^https:\/\/.*\.vercel\.app$/'
+    ],
 
     'allowed_headers' => ['*'],
 
