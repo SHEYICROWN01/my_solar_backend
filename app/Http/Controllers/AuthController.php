@@ -27,49 +27,60 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
-        // 1. Basic Validation
+        // 1. Basic Validation - Accept both formats
         $request->validate([
-            'name' => 'required|string|max:255',
+            'first_name' => 'required_without:name|string|max:255',
+            'last_name' => 'required_without:name|string|max:255',
+            'name' => 'required_without_all:first_name,last_name|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
+            'phone_number' => 'nullable|string|max:20',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
+        // Combine first_name and last_name if provided, otherwise use name
+        $fullName = $request->has('first_name') 
+            ? trim($request->first_name . ' ' . $request->last_name)
+            : $request->name;
+
         // 2. Advanced Email Validation - Check if email actually exists
-        $emailValidation = $this->emailValidator->validateEmailExists($request->email);
-        
-        if (!$emailValidation['valid']) {
-            \Log::warning('Registration blocked - Invalid email detected', [
-                'email' => $request->email,
-                'validation_code' => $emailValidation['code'],
-                'validation_message' => $emailValidation['message'],
-                'user_ip' => $request->ip(),
-                'user_agent' => $request->userAgent()
-            ]);
+        // Skip validation in local development for easier testing
+        if (config('app.env') !== 'local') {
+            $emailValidation = $this->emailValidator->validateEmailExists($request->email);
+            
+            if (!$emailValidation['valid']) {
+                \Log::warning('Registration blocked - Invalid email detected', [
+                    'email' => $request->email,
+                    'validation_code' => $emailValidation['code'],
+                    'validation_message' => $emailValidation['message'],
+                    'user_ip' => $request->ip(),
+                    'user_agent' => $request->userAgent()
+                ]);
 
-            return response()->json([
-                'message' => $emailValidation['message'],
-                'error' => 'email_validation_failed',
-                'details' => 'Please ensure you enter a valid, existing email address that can receive emails.'
-            ], 422);
-        }
+                return response()->json([
+                    'message' => $emailValidation['message'],
+                    'error' => 'email_validation_failed',
+                    'details' => 'Please ensure you enter a valid, existing email address that can receive emails.'
+                ], 422);
+            }
 
-        // 3. Check for disposable/temporary email domains
-        $domainValidation = $this->emailValidator->validateEmailDomain($request->email);
-        
-        if (!$domainValidation['valid']) {
-            \Log::warning('Registration blocked - Disposable email detected', [
-                'email' => $request->email,
-                'validation_code' => $domainValidation['code'],
-                'validation_message' => $domainValidation['message'],
-                'user_ip' => $request->ip(),
-                'user_agent' => $request->userAgent()
-            ]);
+            // 3. Check for disposable/temporary email domains
+            $domainValidation = $this->emailValidator->validateEmailDomain($request->email);
+            
+            if (!$domainValidation['valid']) {
+                \Log::warning('Registration blocked - Disposable email detected', [
+                    'email' => $request->email,
+                    'validation_code' => $domainValidation['code'],
+                    'validation_message' => $domainValidation['message'],
+                    'user_ip' => $request->ip(),
+                    'user_agent' => $request->userAgent()
+                ]);
 
-            return response()->json([
-                'message' => $domainValidation['message'],
-                'error' => 'disposable_email_not_allowed',
-                'details' => 'Please use a permanent email address for registration.'
-            ], 422);
+                return response()->json([
+                    'message' => $domainValidation['message'],
+                    'error' => 'disposable_email_not_allowed',
+                    'details' => 'Please use a permanent email address for registration.'
+                ], 422);
+            }
         }
 
         try {
@@ -78,7 +89,7 @@ class AuthController extends Controller
 
             // 4. Create User (only after email validation passes)
             $user = User::create([
-                'name' => $request->name,
+                'name' => $fullName,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
             ]);
@@ -98,7 +109,7 @@ class AuthController extends Controller
                     'user_id' => $user->id,
                     'email' => $user->email,
                     'name' => $user->name,
-                    'email_validation_code' => $emailValidation['code'],
+                    'environment' => config('app.env'),
                     'user_ip' => $request->ip(),
                     'email_sent' => true
                 ]);

@@ -1,2 +1,2 @@
-web: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=$PORT || php -S 0.0.0.0:$PORT -t public
-release: php artisan config:cache && php artisan route:cache && php artisan migrate --force
+web: php artisan serve --host=0.0.0.0 --port=$PORT
+release: php artisan migrate --force
