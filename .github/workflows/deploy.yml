@@ -1,0 +1,71 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+# Prevent concurrent deploys — if a new push comes in, cancel the running deploy
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy → Namecheap
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_mysql, mbstring, xml, ctype, json, bcmath, openssl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-prod-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-prod-
+
+      - name: Install production dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+
+            echo "→ Pulling latest code..."
+            cd ${{ secrets.APP_PATH }}
+            git pull origin main
+
+            echo "→ Installing production dependencies..."
+            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+            echo "→ Running migrations..."
+            php artisan migrate --force
+
+            echo "→ Caching config, routes & views..."
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan event:cache
+
+            echo "→ Clearing old opcache (if available)..."
+            php artisan opcache:clear 2>/dev/null || true
+
+            echo "✅ Deployment complete."
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::Deployment failed. Check the SSH deploy step above for details."

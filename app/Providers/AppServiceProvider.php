@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,6 +21,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
 {
+    Schema::defaultStringLength(191);
+
     // Add the route loading logic here:
     Route::middleware('api') // This applies the 'api' middleware group (rate limiting, etc.)
         ->prefix('api') // This adds the '/api' prefix to all routes in the file

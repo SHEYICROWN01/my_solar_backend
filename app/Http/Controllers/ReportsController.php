@@ -46,7 +46,7 @@ class ReportsController extends Controller
 
         // Get order sales data
         $orderSalesData = Order::selectRaw("
-                DATE_TRUNC('day', created_at)::date as period,
+                DATE(created_at) as period,
                 SUM(total_amount) as revenue,
                 COUNT(*) as orders,
                 COUNT(DISTINCT customer_email) as customers
@@ -60,7 +60,7 @@ class ReportsController extends Controller
 
         // Get pre-order sales data
         $preOrderSalesData = CustomerPreOrder::selectRaw("
-                DATE_TRUNC('day', created_at)::date as period,
+                DATE(created_at) as period,
                 SUM(total_amount) as revenue,
                 COUNT(*) as pre_orders,
                 COUNT(DISTINCT customer_email) as customers
@@ -910,7 +910,7 @@ class ReportsController extends Controller
                 DB::raw('AVG(total_amount) as avg_order_value'),
                 DB::raw('MIN(created_at) as first_order'),
                 DB::raw('MAX(created_at) as last_order'),
-                DB::raw('EXTRACT(DAY FROM (MAX(created_at) - MIN(created_at))) as customer_lifespan_days')
+                DB::raw('TIMESTAMPDIFF(DAY, MIN(created_at), MAX(created_at)) as customer_lifespan_days')
             ])
             ->where('payment_status', 'paid')
             ->whereBetween('created_at', [$start, $end])

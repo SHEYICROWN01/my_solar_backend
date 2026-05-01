@@ -1,0 +1,5 @@
+# Code owners are automatically requested as reviewers on every PR.
+# Format: <file pattern>  <GitHub username(s)>
+
+# Default owner for everything — the lead developer must approve all PRs
+*  @SHEYICROWN01
