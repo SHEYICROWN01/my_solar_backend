@@ -26,8 +26,6 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/validate-email', [AuthController::class, 'validateEmail']); // Real-time email validation
 Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verify'])->name('verification.verify');
 
-// CSRF token route for SPA
-Route::get('/sanctum/csrf-cookie')->name('sanctum.csrf-cookie');
 
 // Category routes
 Route::apiResource('categories', CategoryController::class);
