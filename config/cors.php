@@ -34,9 +34,8 @@ return [
         'https://www.ggtl.com',
         'https://api.ggtl.com',
         'https://shop.gifamz.com', // Frontend production domain
-        
-        // Vercel deployment domains (add your actual Vercel URL)
-        'https://your-frontend-app.vercel.app',
+
+        'https://g-tech-solar-frontend.vercel.app',
     ],
 
     'allowed_origins_patterns' => [
